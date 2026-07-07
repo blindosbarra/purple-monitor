@@ -173,6 +173,22 @@ export default function PhotosScreen() {
             <p className="photo-meta">
               {fmt(viewer.dateISO)} · {t.regions[viewer.region as RegionKey] ?? viewer.region}
             </p>
+            <label className="field-label">{t.moveRegion}</label>
+            <select
+              value={viewer.region}
+              onChange={async (e) => {
+                const region = e.target.value
+                await db.photos.update(viewer.id!, { region })
+                setViewer({ ...viewer, region })
+                load()
+              }}
+            >
+              {REGION_KEYS.map((r) => (
+                <option key={r} value={r}>
+                  {t.regions[r]}
+                </option>
+              ))}
+            </select>
             <AnalysisPanel photo={viewer} />
             <div className="btn-row">
               <button className="danger" onClick={() => deletePhoto(viewer)}>

@@ -142,6 +142,7 @@ export default function SettingsScreen({ onLock }: { onLock: () => void }) {
       <div className="card">
         <h3>{t.aboutTitle}</h3>
         <p className="hint">{t.aboutText}</p>
+        <p className="version">v{__BUILD_INFO__}</p>
       </div>
     </div>
   )

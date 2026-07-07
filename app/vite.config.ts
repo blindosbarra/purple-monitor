@@ -5,6 +5,12 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   // On GitHub Pages the app lives under /purple-monitor/, not the domain root.
   base: process.env.BASE_PATH ?? '/',
+  define: {
+    // Visible build stamp so a phone's running version is verifiable.
+    __BUILD_INFO__: JSON.stringify(
+      `${new Date().toISOString().slice(0, 10)}.${(process.env.GITHUB_SHA ?? 'local').slice(0, 7)}`
+    )
+  },
   plugins: [
     react(),
     VitePWA({

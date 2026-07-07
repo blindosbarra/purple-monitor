@@ -161,17 +161,18 @@ export default function CaptureScreen({
       {/* Locked once a photo is taken: switching region here would file the
           captured photo under the wrong body part. Retake to change region. */}
       <label className="field-label">{t.captureRegion}</label>
-      <select
-        value={region}
-        disabled={!!preview}
-        onChange={(e) => setRegion(e.target.value as RegionKey)}
-      >
+      <div className="chip-row">
         {REGION_KEYS.map((r) => (
-          <option key={r} value={r}>
+          <button
+            key={r}
+            className={region === r ? 'chip active' : 'chip'}
+            disabled={!!preview}
+            onClick={() => setRegion(r)}
+          >
             {t.regions[r]}
-          </option>
+          </button>
         ))}
-      </select>
+      </div>
 
       {preview ? (
         <>
@@ -181,7 +182,7 @@ export default function CaptureScreen({
           <div className="btn-row">
             <button onClick={retake}>{t.retake}</button>
             <button className="primary" onClick={save} disabled={saving}>
-              {t.savePhoto}
+              {t.savePhoto} · {t.regions[region]}
             </button>
           </div>
         </>

@@ -76,6 +76,7 @@ export default function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         <button className="primary" type="submit" disabled={busy}>
           {initialized ? t.lockUnlock : t.lockCreate}
         </button>
+        <p className="version">v{__BUILD_INFO__}</p>
       </form>
     </div>
   )
