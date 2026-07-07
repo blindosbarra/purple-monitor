@@ -41,8 +41,22 @@ export default function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         <h1>{t.appName}</h1>
         <h2>{initialized ? t.lockUnlockTitle : t.lockCreateTitle}</h2>
         {!initialized && <p className="hint">{t.lockCreateDesc}</p>}
+        {/* Visually hidden username gives password managers the account
+            context they need to offer/save the passphrase on this site. */}
+        <input
+          className="vh"
+          type="text"
+          name="username"
+          autoComplete="username"
+          value="purple-monitor"
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+        />
         <input
           type="password"
+          name="passphrase"
+          autoComplete={initialized ? 'current-password' : 'new-password'}
           placeholder={t.lockPassphrase}
           value={pass}
           onChange={(e) => setPass(e.target.value)}
@@ -51,6 +65,8 @@ export default function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
         {!initialized && (
           <input
             type="password"
+            name="passphrase-confirm"
+            autoComplete="new-password"
             placeholder={t.lockConfirm}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
