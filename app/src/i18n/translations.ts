@@ -10,9 +10,16 @@ export type RegionKey =
   | 'buttocks'
   | 'feet'
   | 'belly'
-  | 'arms'
+  | 'leftArmFront'
+  | 'leftArmBack'
+  | 'rightArmFront'
+  | 'rightArmBack'
+  | 'mouth'
+  | 'arms' // legacy generic entry, kept so old photos still display
   | 'other'
 
+// 'arms' is intentionally absent: it was replaced by the four specific
+// arm regions. Old photos keep their label and can be re-filed.
 export const REGION_KEYS: RegionKey[] = [
   'leftLegFront',
   'leftLegBack',
@@ -23,7 +30,11 @@ export const REGION_KEYS: RegionKey[] = [
   'buttocks',
   'feet',
   'belly',
-  'arms',
+  'leftArmFront',
+  'leftArmBack',
+  'rightArmFront',
+  'rightArmBack',
+  'mouth',
   'other'
 ]
 
@@ -86,6 +97,11 @@ const en = {
     buttocks: 'Buttocks',
     feet: 'Feet',
     belly: 'Belly',
+    leftArmFront: 'Left arm — front',
+    leftArmBack: 'Left arm — back',
+    rightArmFront: 'Right arm — front',
+    rightArmBack: 'Right arm — back',
+    mouth: 'Mouth',
     arms: 'Arms',
     other: 'Other'
   } as Record<RegionKey, string>,
@@ -231,6 +247,11 @@ const it: Dict = {
     buttocks: 'Glutei',
     feet: 'Piedi',
     belly: 'Pancia',
+    leftArmFront: 'Braccio sinistro — davanti',
+    leftArmBack: 'Braccio sinistro — dietro',
+    rightArmFront: 'Braccio destro — davanti',
+    rightArmBack: 'Braccio destro — dietro',
+    mouth: 'Bocca',
     arms: 'Braccia',
     other: 'Altro'
   },
