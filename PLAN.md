@@ -132,12 +132,11 @@ Designed around home dipstick testing, the standard IgAV follow-up:
   worsening from the previous test, or persistent proteinuria ⇒ banner
   saying *"Share this result with your pediatrician."*
 
-### 3.5 Doctor report export
+### 3.5 Doctor report export — deferred (not planned for now)
 
-One-tap **PDF report** generated locally: rash trend charts, selected
-annotated photos, and the full urine/symptom diary table — so visits to the
-pediatrician or nephrologist come with objective data. Shared only by
-explicit user action (system share sheet / file save).
+*Removed from scope at the owner's request (2026-07-07).* If ever revisited:
+a locally generated PDF with trend charts, annotated photos, and the diary
+table, shared only by explicit user action.
 
 ---
 
@@ -177,7 +176,6 @@ explicit user action (system share sheet / file save).
 ### Phase 3 — Comfort features
 - Dipstick photo auto-reading (color-patch matching against the strip
   brand's reference chart).
-- PDF doctor report.
 - Optional personalized detection tuning from the parent's corrections.
 
 Each phase is independently shippable; Phase 1 alone already replaces the
@@ -204,7 +202,13 @@ purple-monitor/
 
 ---
 
-## 7. Open questions for you
+## 7. Decisions log
+
+- **UI language: Italian + English** (2026-07-07) — switchable in settings,
+  default follows the phone's language.
+- **Doctor report export: not planned for now** (2026-07-07).
+
+## 8. Remaining open questions
 
 1. **Phone type?** Android, iPhone, or both? (The PWA covers both; it only
    changes which install instructions and notification quirks we document.)
@@ -212,7 +216,6 @@ purple-monitor/
    useful now to match the entry form to the strip's exact scale.
 3. Is the **reference sticker/coin** during photos acceptable? It's optional
    but makes millimeter measurements and color comparison much more reliable.
-4. Preferred language for the UI — **Italian**, English, or both?
 
 ---
 
