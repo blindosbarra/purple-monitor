@@ -6,6 +6,8 @@ export type RegionKey =
   | 'rightLegFront'
   | 'rightLegBack'
   | 'buttocks'
+  | 'feet'
+  | 'belly'
   | 'arms'
   | 'other'
 
@@ -15,6 +17,8 @@ export const REGION_KEYS: RegionKey[] = [
   'rightLegFront',
   'rightLegBack',
   'buttocks',
+  'feet',
+  'belly',
   'arms',
   'other'
 ]
@@ -73,6 +77,8 @@ const en = {
     rightLegFront: 'Right leg — front',
     rightLegBack: 'Right leg — back',
     buttocks: 'Buttocks',
+    feet: 'Feet',
+    belly: 'Belly',
     arms: 'Arms',
     other: 'Other'
   } as Record<RegionKey, string>,
@@ -199,6 +205,8 @@ const it: Dict = {
     rightLegFront: 'Gamba destra — davanti',
     rightLegBack: 'Gamba destra — dietro',
     buttocks: 'Glutei',
+    feet: 'Piedi',
+    belly: 'Pancia',
     arms: 'Braccia',
     other: 'Altro'
   },

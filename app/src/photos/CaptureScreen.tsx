@@ -158,8 +158,14 @@ export default function CaptureScreen({
         </button>
       </div>
 
+      {/* Locked once a photo is taken: switching region here would file the
+          captured photo under the wrong body part. Retake to change region. */}
       <label className="field-label">{t.captureRegion}</label>
-      <select value={region} onChange={(e) => setRegion(e.target.value as RegionKey)}>
+      <select
+        value={region}
+        disabled={!!preview}
+        onChange={(e) => setRegion(e.target.value as RegionKey)}
+      >
         {REGION_KEYS.map((r) => (
           <option key={r} value={r}>
             {t.regions[r]}
@@ -184,6 +190,7 @@ export default function CaptureScreen({
           <div className="camera-stage">
             <video ref={videoRef} className="camera-fill" autoPlay playsInline muted />
             {ghostOn && ghostUrl && <img src={ghostUrl} className="camera-fill ghost" alt="" />}
+            {ghostOn && ghostUrl && <span className="cmp-label left">👻 {t.ghostToggle}</span>}
             {cameraOk === false && <p className="camera-msg">{t.cameraError}</p>}
           </div>
           {ghostUrl && <p className="hint">{t.ghostHint}</p>}
