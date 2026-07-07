@@ -54,9 +54,25 @@ npm run dev       # dev server (note: the CSP in index.html is strict;
 
 ## Putting it on your phone
 
-The app is a static site in `app/dist`. Host those files on **any HTTPS
-static host** (HTTPS is required for camera access), open the URL on the
-phone, and use "Add to Home Screen" — it then works offline like a native
-app. Nothing is ever sent back to the host after the first load, but for
-maximum privacy prefer a host you control or your home network
-(e.g., a small HTTPS server on your LAN).
+Deployment is automated with GitHub Pages: the workflow in
+`.github/workflows/deploy.yml` builds and publishes the app on every push.
+
+One-time setup (GitHub's free plan only offers Pages on public repos):
+
+1. Make the repository public: **Settings → General → Danger Zone →
+   Change visibility → Make public**. This publishes only the app's code —
+   never any photos or diary data, which exist solely on your phone.
+2. Open the **Actions** tab and wait for the "Deploy to GitHub Pages" run
+   to turn green (re-run it if it failed while the repo was still private).
+3. On the phone, open **https://blindosbarra.github.io/purple-monitor/**
+   - iPhone (Safari): Share button → **Add to Home Screen**
+   - Android (Chrome): ⋮ menu → **Add to Home screen / Install app**
+
+After that it opens full-screen from its own icon and works offline.
+Nothing is ever sent back to the host after the page loads (a strict
+Content-Security-Policy forbids it).
+
+Prefer to keep the repository private? Any static host works instead —
+e.g. Cloudflare Pages or Netlify connected to this repo (build command
+`npm run build` in `app/`, publish directory `app/dist`) — HTTPS is
+required for camera access.

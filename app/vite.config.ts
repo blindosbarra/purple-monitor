@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // On GitHub Pages the app lives under /purple-monitor/, not the domain root.
+  base: process.env.BASE_PATH ?? '/',
   plugins: [
     react(),
     VitePWA({
