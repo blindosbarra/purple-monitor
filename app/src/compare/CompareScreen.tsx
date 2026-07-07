@@ -2,7 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocale, useT } from '../i18n'
 import { REGION_KEYS, type RegionKey } from '../i18n/translations'
 import { db, type PhotoRec } from '../storage/db'
+import * as vault from '../storage/vault'
 import { usePhotoUrl } from '../components/images'
+import { analyzeBlob, matchSpots, type Analysis, type MatchResult } from '../analysis/detect'
+
+// Returns the stored analysis or computes and stores it.
+async function getAnalysis(p: PhotoRec): Promise<Analysis> {
+  if (p.analysisEnc) return vault.decryptJSON<Analysis>(p.analysisEnc)
+  const a = await analyzeBlob(await vault.decryptToBlob(p.enc))
+  await db.photos.update(p.id!, { analysisEnc: await vault.encryptJSON(a) })
+  return a
+}
 
 export default function CompareScreen() {
   const t = useT()
@@ -36,6 +46,24 @@ export default function CompareScreen() {
   const b = useMemo(() => photos.find((p) => p.id === bId) ?? null, [photos, bId])
   const urlA = usePhotoUrl(a?.enc)
   const urlB = usePhotoUrl(b?.enc)
+  const [stats, setStats] = useState<(MatchResult & { aCount: number; bCount: number }) | null>(
+    null
+  )
+
+  useEffect(() => {
+    setStats(null)
+    if (!a || !b || a.id === b.id) return
+    let alive = true
+    Promise.all([getAnalysis(a), getAnalysis(b)])
+      .then(([anA, anB]) => {
+        if (!alive) return
+        setStats({ ...matchSpots(anA, anB), aCount: anA.spots.length, bCount: anB.spots.length })
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [a, b])
 
   const fmt = (iso: string) =>
     new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' })
@@ -88,6 +116,27 @@ export default function CompareScreen() {
               {t.compareSide}
             </button>
           </div>
+
+          {stats && (
+            <div className="card">
+              <h3>{t.compareStats}</h3>
+              <div className="badge-row">
+                <span className="badge">
+                  {t.spots}: {stats.aCount} → <strong>{stats.bCount}</strong>
+                </span>
+                <span className={stats.newCount > 0 ? 'badge alert' : 'badge ok'}>
+                  {t.newSpots}: {stats.newCount}
+                </span>
+                <span className="badge">
+                  {t.persistingSpots}: {stats.persistingCount}
+                </span>
+                <span className={stats.resolvedCount > 0 ? 'badge ok' : 'badge'}>
+                  {t.resolvedSpots}: {stats.resolvedCount}
+                </span>
+              </div>
+              <p className="hint">{t.analysisDisclaimer}</p>
+            </div>
+          )}
 
           {mode === 'slider' ? (
             <>

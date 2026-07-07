@@ -44,7 +44,15 @@ interface BackupFile {
   version: number
   exportedAt: string
   meta: SerMeta[]
-  photos: { region: string; dateISO: string; w: number; h: number; enc: SerPayload; thumbEnc: SerPayload }[]
+  photos: {
+    region: string
+    dateISO: string
+    w: number
+    h: number
+    enc: SerPayload
+    thumbEnc: SerPayload
+    analysisEnc?: SerPayload
+  }[]
   diary: { dateISO: string; enc: SerPayload }[]
 }
 
@@ -67,7 +75,8 @@ export async function exportBackup(): Promise<Blob> {
       w: p.w,
       h: p.h,
       enc: ser(p.enc),
-      thumbEnc: ser(p.thumbEnc)
+      thumbEnc: ser(p.thumbEnc),
+      ...(p.analysisEnc ? { analysisEnc: ser(p.analysisEnc) } : {})
     })),
     diary: (await db.diary.toArray()).map((d) => ({ dateISO: d.dateISO, enc: ser(d.enc) }))
   }
@@ -96,7 +105,8 @@ export async function importBackup(text: string): Promise<void> {
         w: p.w,
         h: p.h,
         enc: deser(p.enc),
-        thumbEnc: deser(p.thumbEnc)
+        thumbEnc: deser(p.thumbEnc),
+        ...(p.analysisEnc ? { analysisEnc: deser(p.analysisEnc) } : {})
       }))
     )
     await db.diary.bulkAdd(data.diary.map((d) => ({ dateISO: d.dateISO, enc: deser(d.enc) })))

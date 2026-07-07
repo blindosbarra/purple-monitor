@@ -14,6 +14,7 @@ export interface PhotoRec {
   h: number
   enc: EncPayload
   thumbEnc: EncPayload
+  analysisEnc?: EncPayload // encrypted Analysis JSON, set after "Analyze"
 }
 
 // The diary entry body is an encrypted JSON payload; date stays indexable.

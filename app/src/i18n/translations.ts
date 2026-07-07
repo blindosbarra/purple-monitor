@@ -3,8 +3,10 @@ export type Lang = 'en' | 'it'
 export type RegionKey =
   | 'leftLegFront'
   | 'leftLegBack'
+  | 'leftLegSide'
   | 'rightLegFront'
   | 'rightLegBack'
+  | 'rightLegSide'
   | 'buttocks'
   | 'feet'
   | 'belly'
@@ -14,8 +16,10 @@ export type RegionKey =
 export const REGION_KEYS: RegionKey[] = [
   'leftLegFront',
   'leftLegBack',
+  'leftLegSide',
   'rightLegFront',
   'rightLegBack',
+  'rightLegSide',
   'buttocks',
   'feet',
   'belly',
@@ -74,14 +78,30 @@ const en = {
   regions: {
     leftLegFront: 'Left leg — front',
     leftLegBack: 'Left leg — back',
+    leftLegSide: 'Left leg — side',
     rightLegFront: 'Right leg — front',
     rightLegBack: 'Right leg — back',
+    rightLegSide: 'Right leg — side',
     buttocks: 'Buttocks',
     feet: 'Feet',
     belly: 'Belly',
     arms: 'Arms',
     other: 'Other'
   } as Record<RegionKey, string>,
+
+  analyze: 'Analyze spots',
+  analyzing: 'Analyzing…',
+  spots: 'Spots',
+  affectedArea: 'Affected area',
+  sizeSmall: 'Small',
+  sizeMedium: 'Medium',
+  sizeLarge: 'Large',
+  newSpots: 'New',
+  persistingSpots: 'Persisting',
+  resolvedSpots: 'Resolved',
+  compareStats: 'Change between the two dates',
+  analysisDisclaimer:
+    'Automatic estimate to help you follow changes — not a medical evaluation. Always check visually and correct with your own eyes.',
 
   diaryTitle: 'Urine & symptom diary',
   newEntry: 'New entry',
@@ -202,14 +222,30 @@ const it: Dict = {
   regions: {
     leftLegFront: 'Gamba sinistra — davanti',
     leftLegBack: 'Gamba sinistra — dietro',
+    leftLegSide: 'Gamba sinistra — lato',
     rightLegFront: 'Gamba destra — davanti',
     rightLegBack: 'Gamba destra — dietro',
+    rightLegSide: 'Gamba destra — lato',
     buttocks: 'Glutei',
     feet: 'Piedi',
     belly: 'Pancia',
     arms: 'Braccia',
     other: 'Altro'
   },
+
+  analyze: 'Analizza le macchie',
+  analyzing: 'Analisi in corso…',
+  spots: 'Macchie',
+  affectedArea: 'Area interessata',
+  sizeSmall: 'Piccole',
+  sizeMedium: 'Medie',
+  sizeLarge: 'Grandi',
+  newSpots: 'Nuove',
+  persistingSpots: 'Persistenti',
+  resolvedSpots: 'Risolte',
+  compareStats: 'Variazione tra le due date',
+  analysisDisclaimer:
+    'Stima automatica per aiutarti a seguire i cambiamenti — non è una valutazione medica. Controlla sempre anche a occhio.',
 
   diaryTitle: 'Diario urine e sintomi',
   newEntry: 'Nuova voce',
