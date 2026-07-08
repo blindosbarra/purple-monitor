@@ -59,6 +59,9 @@ export default function CaptureScreen({
 }) {
   const t = useT()
   const videoRef = useRef<HTMLVideoElement>(null)
+  // Region is chosen on a dedicated screen BEFORE the camera opens, so a
+  // photo can never be filed under the wrong body part.
+  const [stage, setStage] = useState<'region' | 'camera'>('region')
   const [region, setRegion] = useState<RegionKey>('leftLegFront')
   const [cameraOk, setCameraOk] = useState<boolean | null>(null)
   const [ghostOn, setGhostOn] = useState(true)
@@ -70,6 +73,7 @@ export default function CaptureScreen({
   const ghostUrl = usePhotoUrl(ghostPayload)
 
   useEffect(() => {
+    if (stage !== 'camera') return
     let stream: MediaStream | null = null
     let cancelled = false
     navigator.mediaDevices
@@ -88,7 +92,7 @@ export default function CaptureScreen({
       cancelled = true
       stream?.getTracks().forEach((tr) => tr.stop())
     }
-  }, [])
+  }, [stage])
 
   // Ghost overlay: the most recent photo of the selected region.
   useEffect(() => {
@@ -149,30 +153,51 @@ export default function CaptureScreen({
     onDone()
   }
 
+  if (stage === 'region') {
+    return (
+      <div className="screen">
+        <div className="screen-head">
+          <h2>{t.captureTitle}</h2>
+          <button className="linklike" onClick={onCancel}>
+            {t.cancel}
+          </button>
+        </div>
+        <label className="field-label">{t.chooseRegion}</label>
+        <div className="region-list">
+          {REGION_KEYS.map((r) => (
+            <button
+              key={r}
+              className="region-btn"
+              onClick={() => {
+                setRegion(r)
+                setStage('camera')
+              }}
+            >
+              {t.regions[r]}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="screen">
       <div className="screen-head">
-        <h2>{t.captureTitle}</h2>
+        <h2>📷 {t.regions[region]}</h2>
         <button className="linklike" onClick={onCancel}>
           {t.cancel}
         </button>
       </div>
-
-      {/* Locked once a photo is taken: switching region here would file the
-          captured photo under the wrong body part. Retake to change region. */}
-      <label className="field-label">{t.captureRegion}</label>
-      <div className="chip-row">
-        {REGION_KEYS.map((r) => (
-          <button
-            key={r}
-            className={region === r ? 'chip active' : 'chip'}
-            disabled={!!preview}
-            onClick={() => setRegion(r)}
-          >
-            {t.regions[r]}
-          </button>
-        ))}
-      </div>
+      <button
+        className="linklike"
+        onClick={() => {
+          if (preview) retake()
+          setStage('region')
+        }}
+      >
+        ← {t.changeRegion}
+      </button>
 
       {preview ? (
         <>

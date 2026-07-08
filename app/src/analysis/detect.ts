@@ -1,20 +1,27 @@
 // On-device purpura spot detection. Runs entirely in the phone's browser.
 //
-// Approach: purpuric lesions are darker and red-violet compared with the
-// surrounding skin, which means their *green fraction* g/(r+g+b) drops
-// well below the skin's. We threshold adaptively against the image's own
-// statistics (robust to lighting and skin tone), then extract connected
-// blobs and filter by size and compactness.
+// v2 pipeline, built for real photos (shadows, background, hair):
+//  1. Skin gate: pixels are classified as skin via the classic YCbCr range;
+//     statistics and candidates are only accepted in/around skin.
+//  2. Local contrast: a spot must be markedly green-poor and darker than its
+//     *local neighborhood* (integral-image box means), not the global image —
+//     this ignores lighting gradients and large shadows.
+//  3. Blob filters: size range, compactness (excludes hairs/creases), and a
+//     "ring test" — the area immediately around a spot must be mostly skin,
+//     which rejects blobs belonging to background objects.
+//  4. Manual corrections: spots can be added/removed by the parent; manual
+//     spots are flagged and drawn in a different color.
 
 export interface Spot {
   x: number // centroid, px in analysis space
   y: number
   area: number // px²
   d: number // equivalent diameter, px
+  manual?: boolean
 }
 
 export interface Analysis {
-  version: 1
+  version: 2
   w: number
   h: number
   spots: Spot[]
@@ -22,6 +29,14 @@ export interface Analysis {
 }
 
 export type SizeClass = 'small' | 'medium' | 'large'
+export type Sensitivity = 'low' | 'normal' | 'high'
+
+// Local green-fraction deficit required to call a pixel a spot candidate.
+export const SENSITIVITY_DELTA: Record<Sensitivity, number> = {
+  low: 0.055,
+  normal: 0.038,
+  high: 0.026
+}
 
 const MAX_SIDE = 900
 
@@ -52,49 +67,86 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
   }
 }
 
-export function analyzeImageData(img: ImageData): Analysis {
+// Summed-area table for O(1) box sums.
+function integralOf(src: ArrayLike<number>, w: number, h: number): Float64Array {
+  const int = new Float64Array((w + 1) * (h + 1))
+  for (let y = 0; y < h; y++) {
+    let rowSum = 0
+    for (let x = 0; x < w; x++) {
+      rowSum += src[y * w + x]
+      int[(y + 1) * (w + 1) + (x + 1)] = int[y * (w + 1) + (x + 1)] + rowSum
+    }
+  }
+  return int
+}
+
+function boxSum(
+  int: Float64Array,
+  w: number,
+  h: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number
+): { sum: number; count: number } {
+  x0 = Math.max(0, x0)
+  y0 = Math.max(0, y0)
+  x1 = Math.min(w - 1, x1)
+  y1 = Math.min(h - 1, y1)
+  if (x1 < x0 || y1 < y0) return { sum: 0, count: 0 }
+  const s =
+    int[(y1 + 1) * (w + 1) + (x1 + 1)] -
+    int[y0 * (w + 1) + (x1 + 1)] -
+    int[(y1 + 1) * (w + 1) + x0] +
+    int[y0 * (w + 1) + x0]
+  return { sum: s, count: (x1 - x0 + 1) * (y1 - y0 + 1) }
+}
+
+export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.normal): Analysis {
   const { data, width: w, height: h } = img
   const n = w * h
 
-  // Pass 1: image statistics (mean/std of green fraction, mean luminance)
   const gfrac = new Float32Array(n)
   const lum = new Float32Array(n)
-  let gSum = 0
-  let lSum = 0
+  const skin = new Uint8Array(n)
   for (let i = 0; i < n; i++) {
     const r = data[i * 4]
     const g = data[i * 4 + 1]
     const b = data[i * 4 + 2]
-    const gf = g / (r + g + b + 1)
-    const l = 0.299 * r + 0.587 * g + 0.114 * b
-    gfrac[i] = gf
-    lum[i] = l
-    gSum += gf
-    lSum += l
+    gfrac[i] = g / (r + g + b + 1)
+    lum[i] = 0.299 * r + 0.587 * g + 0.114 * b
+    // classic YCbCr skin gate — broad across skin tones
+    const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b
+    const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b
+    if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 177) skin[i] = 1
   }
-  const gMean = gSum / n
-  const lMean = lSum / n
-  let gVar = 0
-  for (let i = 0; i < n; i++) {
-    const d = gfrac[i] - gMean
-    gVar += d * d
-  }
-  const gStd = Math.sqrt(gVar / n)
 
-  // Pass 2: mask of candidate purpura pixels.
-  // A spot pixel is markedly green-poor vs the skin, darker than average,
-  // and redder than green (excludes gray shadows, where r ≈ g ≈ b).
-  const gThresh = gMean - Math.max(0.03, 1.2 * gStd)
+  const intG = integralOf(gfrac, w, h)
+  const intL = integralOf(lum, w, h)
+  const intS = integralOf(skin, w, h)
+  const R = Math.max(10, Math.round(Math.min(w, h) / 10))
+
+  // Candidate mask: local anomaly on/near skin.
   const mask = new Uint8Array(n)
-  for (let i = 0; i < n; i++) {
-    const r = data[i * 4]
-    const g = data[i * 4 + 1]
-    if (gfrac[i] < gThresh && lum[i] < lMean && r > g + 10) mask[i] = 1
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x
+      const r = data[i * 4]
+      const g = data[i * 4 + 1]
+      if (r <= g + 8) continue // gray/green: shadows, hair, background
+      const sBox = boxSum(intS, w, h, x - R, y - R, x + R, y + R)
+      if (sBox.sum / sBox.count < 0.3) continue // not in a skin area
+      const gBox = boxSum(intG, w, h, x - R, y - R, x + R, y + R)
+      if (gfrac[i] >= gBox.sum / gBox.count - delta) continue // not locally red-violet
+      const lBox = boxSum(intL, w, h, x - R, y - R, x + R, y + R)
+      if (lum[i] >= lBox.sum / lBox.count - 5) continue // not locally darker
+      mask[i] = 1
+    }
   }
 
-  // Pass 3: connected components (4-connectivity, iterative flood fill)
+  // Connected components (4-connectivity, iterative flood fill)
   const minArea = Math.max(6, Math.round(n * 0.00002))
-  const maxArea = Math.round(n * 0.02)
+  const maxArea = Math.round(n * 0.012)
   const visited = new Uint8Array(n)
   const stack = new Int32Array(n)
   const spots: Spot[] = []
@@ -143,7 +195,13 @@ export function analyzeImageData(img: ImageData): Analysis {
     if (area < minArea || area > maxArea) continue
     const bw = maxX - minX + 1
     const bh = maxY - minY + 1
-    if (area / (bw * bh) < 0.25) continue // too stringy to be a spot
+    if (area / (bw * bh) < 0.3) continue // too stringy: hair, crease, edge
+    // Ring test: the surroundings of a real skin spot are skin.
+    const m = Math.max(4, Math.round((bw + bh) / 4))
+    const outer = boxSum(intS, w, h, minX - m, minY - m, maxX + m, maxY + m)
+    const inner = boxSum(intS, w, h, minX, minY, maxX, maxY)
+    const ringCount = outer.count - inner.count
+    if (ringCount > 0 && (outer.sum - inner.sum) / ringCount < 0.4) continue
     spots.push({
       x: Math.round(sx / area),
       y: Math.round(sy / area),
@@ -154,14 +212,14 @@ export function analyzeImageData(img: ImageData): Analysis {
   }
 
   spots.sort((a, b) => b.area - a.area)
-  return { version: 1, w, h, spots, affectedPct: (affected / n) * 100 }
+  return { version: 2, w, h, spots, affectedPct: (affected / n) * 100 }
 }
 
-export async function analyzeBlob(blob: Blob): Promise<Analysis> {
-  return analyzeImageData(await blobToImageData(blob))
+export async function analyzeBlob(blob: Blob, delta?: number): Promise<Analysis> {
+  return analyzeImageData(await blobToImageData(blob), delta)
 }
 
-// Size relative to frame width; absolute mm needs the Phase-2 reference
+// Size relative to frame width; absolute mm needs the planned reference
 // sticker, so classes stay deliberately coarse.
 export function sizeClass(spot: Spot, imageWidth: number): SizeClass {
   const rel = spot.d / imageWidth
@@ -176,7 +234,7 @@ export function sizeBreakdown(a: Analysis): Record<SizeClass, number> {
   return out
 }
 
-// Draws the photo with detection circles for visual verification.
+// Draws the photo with detection circles: cyan = automatic, amber = manual.
 export async function renderOverlay(blob: Blob, a: Analysis): Promise<Blob> {
   const url = URL.createObjectURL(blob)
   try {
@@ -186,9 +244,9 @@ export async function renderOverlay(blob: Blob, a: Analysis): Promise<Blob> {
     canvas.height = a.h
     const ctx = canvas.getContext('2d')!
     ctx.drawImage(img, 0, 0, a.w, a.h)
-    ctx.strokeStyle = '#22d3ee'
     ctx.lineWidth = Math.max(2, a.w / 450)
     for (const s of a.spots) {
+      ctx.strokeStyle = s.manual ? '#fbbf24' : '#22d3ee'
       ctx.beginPath()
       ctx.arc(s.x, s.y, s.d / 2 + ctx.lineWidth * 2, 0, Math.PI * 2)
       ctx.stroke()
@@ -199,6 +257,23 @@ export async function renderOverlay(blob: Blob, a: Analysis): Promise<Blob> {
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+// Toggle a spot at analysis-space coordinates: removes the spot under the
+// tap, or adds a manual one if the tap hit empty skin.
+export function toggleSpot(a: Analysis, x: number, y: number): Analysis {
+  const hitRadius = (s: Spot) => s.d / 2 + a.w * 0.015
+  const idx = a.spots.findIndex((s) => Math.hypot(s.x - x, s.y - y) <= hitRadius(s))
+  let spots: Spot[]
+  if (idx >= 0) {
+    spots = a.spots.filter((_, i) => i !== idx)
+  } else {
+    const ds = a.spots.map((s) => s.d).sort((p, q) => p - q)
+    const d = ds.length ? ds[(ds.length / 2) | 0] : a.w * 0.02
+    spots = [...a.spots, { x: Math.round(x), y: Math.round(y), d, area: Math.round(Math.PI * (d / 2) ** 2), manual: true }]
+  }
+  const affected = spots.reduce((acc, s) => acc + s.area, 0)
+  return { ...a, spots, affectedPct: (affected / (a.w * a.h)) * 100 }
 }
 
 export interface MatchResult {

@@ -72,6 +72,8 @@ const en = {
 
   captureTitle: 'New photo',
   captureRegion: 'Body region',
+  chooseRegion: 'Choose the body region first',
+  changeRegion: 'Change region',
   ghostHint: 'Align the leg with the faded previous photo',
   ghostToggle: 'Overlay',
   takePhoto: 'Take photo',
@@ -117,6 +119,11 @@ const en = {
   persistingSpots: 'Persisting',
   resolvedSpots: 'Resolved',
   compareStats: 'Change between the two dates',
+  sensitivity: 'Detection sensitivity',
+  sensLow: 'Low',
+  sensNormal: 'Normal',
+  sensHigh: 'High',
+  tapHint: 'Tap a wrong circle to remove it; tap a missed spot to add it.',
   analysisDisclaimer:
     'Automatic estimate to help you follow changes — not a medical evaluation. Always check visually and correct with your own eyes.',
 
@@ -222,6 +229,8 @@ const it: Dict = {
 
   captureTitle: 'Nuova foto',
   captureRegion: 'Zona del corpo',
+  chooseRegion: 'Prima scegli la zona del corpo',
+  changeRegion: 'Cambia zona',
   ghostHint: 'Allinea la gamba con la foto precedente in trasparenza',
   ghostToggle: 'Sovrapposizione',
   takePhoto: 'Scatta',
@@ -267,6 +276,11 @@ const it: Dict = {
   persistingSpots: 'Persistenti',
   resolvedSpots: 'Risolte',
   compareStats: 'Variazione tra le due date',
+  sensitivity: 'Sensibilità del rilevamento',
+  sensLow: 'Bassa',
+  sensNormal: 'Normale',
+  sensHigh: 'Alta',
+  tapHint: 'Tocca un cerchio sbagliato per eliminarlo; tocca una macchia non rilevata per aggiungerla.',
   analysisDisclaimer:
     'Stima automatica per aiutarti a seguire i cambiamenti — non è una valutazione medica. Controlla sempre anche a occhio.',
 
