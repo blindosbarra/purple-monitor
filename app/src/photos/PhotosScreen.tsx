@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState, type MouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent
+} from 'react'
 import { useLocale, useT } from '../i18n'
 import { REGION_KEYS, type RegionKey } from '../i18n/translations'
 import { db, type PhotoRec } from '../storage/db'
@@ -11,6 +18,7 @@ import {
   toggleSpot,
   SENSITIVITY_DELTA,
   type Analysis,
+  type CropRect,
   type Sensitivity
 } from '../analysis/detect'
 import CaptureScreen from './CaptureScreen'
@@ -23,18 +31,29 @@ function AnalysisPanel({ photo }: { photo: PhotoRec }) {
   const [overlayUrl, setOverlayUrl] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sens, setSens] = useState<Sensitivity>('normal')
+  const [crop, setCrop] = useState<CropRect | null>(null)
+  const [cropMode, setCropMode] = useState(false)
+  const [drag, setDrag] = useState<CropRect | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const justCropped = useRef(false)
 
   // Decrypt the photo once; load a previously stored analysis with it.
   useEffect(() => {
     let alive = true
     setBlob(null)
     setAnalysis(null)
+    setCrop(null)
+    setCropMode(false)
+    setDrag(null)
     vault.decryptToBlob(photo.enc).then((b) => {
       if (alive) setBlob(b)
     })
     if (photo.analysisEnc) {
       vault.decryptJSON<Analysis>(photo.analysisEnc).then((a) => {
-        if (alive) setAnalysis(a)
+        if (alive) {
+          setAnalysis(a)
+          setCrop(a.crop ?? null)
+        }
       })
     }
     return () => {
@@ -75,11 +94,11 @@ function AnalysisPanel({ photo }: { photo: PhotoRec }) {
     await db.photos.update(photo.id!, { analysisEnc: await vault.encryptJSON(a) })
   }
 
-  const analyze = async (s: Sensitivity = sens) => {
+  const analyze = async (s: Sensitivity = sens, cropArg: CropRect | null = crop) => {
     if (busy || !blob) return
     setBusy(true)
     try {
-      const a = await analyzeBlob(blob, SENSITIVITY_DELTA[s])
+      const a = await analyzeBlob(blob, SENSITIVITY_DELTA[s], cropArg ?? undefined)
       setAnalysis(a)
       await persist(a)
     } finally {
@@ -87,9 +106,53 @@ function AnalysisPanel({ photo }: { photo: PhotoRec }) {
     }
   }
 
+  const clearCrop = () => {
+    setCrop(null)
+    void analyze(sens, null)
+  }
+
+  // Drag-to-select the analysis area.
+  const normPoint = (e: ReactPointerEvent) => {
+    const r = wrapRef.current!.getBoundingClientRect()
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
+    }
+  }
+  const onPointerDown = (e: ReactPointerEvent) => {
+    if (!cropMode) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const p = normPoint(e)
+    setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })
+  }
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (!cropMode || !drag) return
+    const p = normPoint(e)
+    setDrag((d) => (d ? { ...d, x1: p.x, y1: p.y } : d))
+  }
+  const onPointerUp = async () => {
+    if (!cropMode || !drag) return
+    const rect: CropRect = {
+      x0: Math.min(drag.x0, drag.x1),
+      y0: Math.min(drag.y0, drag.y1),
+      x1: Math.max(drag.x0, drag.x1),
+      y1: Math.max(drag.y0, drag.y1)
+    }
+    setDrag(null)
+    setCropMode(false)
+    justCropped.current = true
+    if (rect.x1 - rect.x0 < 0.05 || rect.y1 - rect.y0 < 0.05) return
+    setCrop(rect)
+    await analyze(sens, rect)
+  }
+
   // Tap a circle to remove it; tap a missed spot to add it.
   const onTap = async (e: MouseEvent<HTMLImageElement>) => {
-    if (!analysis) return
+    if (justCropped.current) {
+      justCropped.current = false
+      return
+    }
+    if (!analysis || cropMode) return
     const img = e.currentTarget
     const rect = img.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width) * analysis.w
@@ -103,16 +166,65 @@ function AnalysisPanel({ photo }: { photo: PhotoRec }) {
 
   return (
     <div className="analysis">
-      {overlayUrl ? (
-        <img src={overlayUrl} className="modal-img tappable" alt="" onClick={onTap} />
+      <div
+        className="img-wrap"
+        ref={wrapRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => setDrag(null)}
+      >
+        {overlayUrl ? (
+          <img
+            src={overlayUrl}
+            className={`modal-img ${cropMode ? 'cropping' : 'tappable'}`}
+            alt=""
+            draggable={false}
+            onClick={onTap}
+          />
+        ) : (
+          blobUrl && (
+            <img
+              src={blobUrl}
+              className={`modal-img ${cropMode ? 'cropping' : ''}`}
+              alt=""
+              draggable={false}
+            />
+          )
+        )}
+        {drag && (
+          <div
+            className="crop-live"
+            style={{
+              left: `${Math.min(drag.x0, drag.x1) * 100}%`,
+              top: `${Math.min(drag.y0, drag.y1) * 100}%`,
+              width: `${Math.abs(drag.x1 - drag.x0) * 100}%`,
+              height: `${Math.abs(drag.y1 - drag.y0) * 100}%`
+            }}
+          />
+        )}
+      </div>
+      {cropMode ? (
+        <p className="hint">✂️ {t.cropHint}</p>
       ) : (
-        blobUrl && <img src={blobUrl} className="modal-img" alt="" />
+        analysis && <p className="hint">☝️ {t.tapHint}</p>
       )}
-      {analysis && <p className="hint">☝️ {t.tapHint}</p>}
       <div className="btn-row">
         <button className="primary" onClick={() => analyze()} disabled={busy || !blob}>
           🔬 {busy ? t.analyzing : t.analyze}
         </button>
+        <button
+          className={cropMode ? 'active' : ''}
+          disabled={busy || !blob}
+          onClick={() => setCropMode(!cropMode)}
+        >
+          ✂️ {t.cropStart}
+        </button>
+        {crop && !cropMode && (
+          <button disabled={busy} onClick={clearCrop}>
+            {t.cropClear}
+          </button>
+        )}
       </div>
       {analysis && (
         <>

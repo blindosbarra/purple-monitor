@@ -124,6 +124,9 @@ const en = {
   sensNormal: 'Normal',
   sensHigh: 'High',
   tapHint: 'Tap a wrong circle to remove it; tap a missed spot to add it.',
+  cropStart: 'Limit area',
+  cropHint: 'Drag a rectangle over the skin to analyze; everything outside is ignored.',
+  cropClear: 'Remove limit',
   analysisDisclaimer:
     'Automatic estimate to help you follow changes — not a medical evaluation. Always check visually and correct with your own eyes.',
 
@@ -281,6 +284,9 @@ const it: Dict = {
   sensNormal: 'Normale',
   sensHigh: 'Alta',
   tapHint: 'Tocca un cerchio sbagliato per eliminarlo; tocca una macchia non rilevata per aggiungerla.',
+  cropStart: 'Limita area',
+  cropHint: "Trascina un rettangolo sulla pelle da analizzare; tutto ciò che è fuori viene ignorato.",
+  cropClear: 'Rimuovi limite',
   analysisDisclaimer:
     'Stima automatica per aiutarti a seguire i cambiamenti — non è una valutazione medica. Controlla sempre anche a occhio.',
 

@@ -20,12 +20,21 @@ export interface Spot {
   manual?: boolean
 }
 
+// Normalized [0,1] rectangle restricting the analysis to a skin area.
+export interface CropRect {
+  x0: number
+  y0: number
+  x1: number
+  y1: number
+}
+
 export interface Analysis {
   version: 3
   w: number
   h: number
   spots: Spot[]
   skinArea?: number // px² classified as skin
+  crop?: CropRect // analysis was restricted to this area
   affectedPct: number // % of the detected skin covered by spots
 }
 
@@ -50,22 +59,8 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   })
 }
 
-async function blobToImageData(blob: Blob): Promise<ImageData> {
-  const url = URL.createObjectURL(blob)
-  try {
-    const img = await loadImage(url)
-    const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
-    const w = Math.max(1, Math.round(img.naturalWidth * scale))
-    const h = Math.max(1, Math.round(img.naturalHeight * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-    ctx.drawImage(img, 0, 0, w, h)
-    return ctx.getImageData(0, 0, w, h)
-  } finally {
-    URL.revokeObjectURL(url)
-  }
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v))
 }
 
 // Summed-area table for O(1) box sums.
@@ -329,8 +324,36 @@ export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.norma
   }
 }
 
-export async function analyzeBlob(blob: Blob, delta?: number): Promise<Analysis> {
-  return analyzeImageData(await blobToImageData(blob), delta)
+export async function analyzeBlob(blob: Blob, delta?: number, crop?: CropRect): Promise<Analysis> {
+  const url = URL.createObjectURL(blob)
+  try {
+    const img = await loadImage(url)
+    const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight))
+    const w = Math.max(1, Math.round(img.naturalWidth * scale))
+    const h = Math.max(1, Math.round(img.naturalHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+    ctx.drawImage(img, 0, 0, w, h)
+    if (!crop) return analyzeImageData(ctx.getImageData(0, 0, w, h), delta)
+    // Analyze only the selected rectangle, then report spots in full-frame
+    // coordinates so overlays, taps, and day-matching stay consistent.
+    const cx0 = clamp(Math.round(crop.x0 * w), 0, w - 8)
+    const cy0 = clamp(Math.round(crop.y0 * h), 0, h - 8)
+    const cw = clamp(Math.round((crop.x1 - crop.x0) * w), 8, w - cx0)
+    const ch = clamp(Math.round((crop.y1 - crop.y0) * h), 8, h - cy0)
+    const a = analyzeImageData(ctx.getImageData(cx0, cy0, cw, ch), delta)
+    return {
+      ...a,
+      w,
+      h,
+      crop,
+      spots: a.spots.map((s) => ({ ...s, x: s.x + cx0, y: s.y + cy0 }))
+    }
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }
 
 // Size relative to frame width; absolute mm needs the planned reference
@@ -358,6 +381,21 @@ export async function renderOverlay(blob: Blob, a: Analysis): Promise<Blob> {
     canvas.height = a.h
     const ctx = canvas.getContext('2d')!
     ctx.drawImage(img, 0, 0, a.w, a.h)
+    if (a.crop) {
+      // dim everything outside the analyzed area
+      const x0 = a.crop.x0 * a.w
+      const y0 = a.crop.y0 * a.h
+      const x1 = a.crop.x1 * a.w
+      const y1 = a.crop.y1 * a.h
+      ctx.fillStyle = 'rgba(10,5,20,0.55)'
+      ctx.fillRect(0, 0, a.w, y0)
+      ctx.fillRect(0, y1, a.w, a.h - y1)
+      ctx.fillRect(0, y0, x0, y1 - y0)
+      ctx.fillRect(x1, y0, a.w - x1, y1 - y0)
+      ctx.strokeStyle = '#a855f7'
+      ctx.lineWidth = Math.max(2, a.w / 450)
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0)
+    }
     ctx.lineWidth = Math.max(2, a.w / 450)
     for (const s of a.spots) {
       ctx.strokeStyle = s.manual ? '#fbbf24' : '#22d3ee'

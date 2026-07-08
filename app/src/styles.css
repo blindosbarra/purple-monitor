@@ -175,6 +175,27 @@ textarea {
   touch-action: manipulation;
 }
 
+.img-wrap {
+  position: relative;
+}
+
+.img-wrap img {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.cropping {
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.crop-live {
+  position: absolute;
+  border: 2px dashed var(--accent);
+  background: rgba(168, 85, 247, 0.15);
+  pointer-events: none;
+}
+
 .version {
   color: var(--muted);
   font-size: 0.7rem;
