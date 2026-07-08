@@ -21,21 +21,22 @@ export interface Spot {
 }
 
 export interface Analysis {
-  version: 2
+  version: 3
   w: number
   h: number
   spots: Spot[]
-  affectedPct: number // % of the image covered by detected spots
+  skinArea?: number // px² classified as skin
+  affectedPct: number // % of the detected skin covered by spots
 }
 
 export type SizeClass = 'small' | 'medium' | 'large'
 export type Sensitivity = 'low' | 'normal' | 'high'
 
-// Local green-fraction deficit required to call a pixel a spot candidate.
+// Combined chroma-anomaly score required to call a pixel a spot candidate.
 export const SENSITIVITY_DELTA: Record<Sensitivity, number> = {
-  low: 0.055,
-  normal: 0.038,
-  high: 0.026
+  low: 0.07,
+  normal: 0.045,
+  high: 0.03
 }
 
 const MAX_SIDE = 900
@@ -102,51 +103,120 @@ function boxSum(
   return { sum: s, count: (x1 - x0 + 1) * (y1 - y0 + 1) }
 }
 
+function median(samples: number[]): number {
+  samples.sort((a, b) => a - b)
+  return samples.length ? samples[(samples.length / 2) | 0] : 0
+}
+
 export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.normal): Analysis {
   const { data, width: w, height: h } = img
   const n = w * h
 
-  const gfrac = new Float32Array(n)
+  // Normalized chromaticity + luminance per pixel.
+  const rn = new Float32Array(n)
+  const gn = new Float32Array(n)
   const lum = new Float32Array(n)
-  const skin = new Uint8Array(n)
   for (let i = 0; i < n; i++) {
     const r = data[i * 4]
     const g = data[i * 4 + 1]
     const b = data[i * 4 + 2]
-    gfrac[i] = g / (r + g + b + 1)
+    const sum = r + g + b + 1
+    rn[i] = r / sum
+    gn[i] = g / sum
     lum[i] = 0.299 * r + 0.587 * g + 0.114 * b
-    // classic YCbCr skin gate — broad across skin tones
-    const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b
-    const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b
-    if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 177) skin[i] = 1
   }
 
-  const intG = integralOf(gfrac, w, h)
-  const intL = integralOf(lum, w, h)
-  const intS = integralOf(skin, w, h)
-  const R = Math.max(10, Math.round(Math.min(w, h) / 10))
+  // Learn this photo's skin color from the frame center (guided capture
+  // puts the limb there). A fixed "skin color" rule fails on warm-colored
+  // backgrounds like blankets, which is why the model is per-photo.
+  const sR: number[] = []
+  const sG: number[] = []
+  const sL: number[] = []
+  for (let y = Math.round(h * 0.2); y < h * 0.8; y += 3) {
+    for (let x = Math.round(w * 0.25); x < w * 0.75; x += 3) {
+      const i = y * w + x
+      sR.push(rn[i])
+      sG.push(gn[i])
+      sL.push(lum[i])
+    }
+  }
+  const rnMed = median(sR)
+  const gnMed = median(sG)
+  const lumMed = median(sL)
 
-  // Candidate mask: local anomaly on/near skin.
+  const skin = new Uint8Array(n)
+  let skinTotal = 0
+  for (let i = 0; i < n; i++) {
+    if (
+      Math.abs(rn[i] - rnMed) <= 0.06 &&
+      Math.abs(gn[i] - gnMed) <= 0.045 &&
+      lum[i] >= lumMed * 0.35 &&
+      lum[i] <= lumMed * 1.7
+    ) {
+      skin[i] = 1
+      skinTotal++
+    }
+  }
+  // Fallback for degenerate frames (center not on skin): classic YCbCr gate.
+  if (skinTotal < n * 0.08) {
+    skinTotal = 0
+    for (let i = 0; i < n; i++) {
+      const r = data[i * 4]
+      const g = data[i * 4 + 1]
+      const b = data[i * 4 + 2]
+      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b
+      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b
+      skin[i] = cb >= 77 && cb <= 127 && cr >= 133 && cr <= 177 ? 1 : 0
+      skinTotal += skin[i]
+    }
+  }
+
+  // Skin-restricted local baselines: each pixel is compared with the mean
+  // of the *skin* around it, never with background or shadow boundaries.
+  const rnSkin = new Float32Array(n)
+  const gnSkin = new Float32Array(n)
+  const lumSkin = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    if (skin[i]) {
+      rnSkin[i] = rn[i]
+      gnSkin[i] = gn[i]
+      lumSkin[i] = lum[i]
+    }
+  }
+  const intS = integralOf(skin, w, h)
+  const intRnS = integralOf(rnSkin, w, h)
+  const intGnS = integralOf(gnSkin, w, h)
+  const intLumS = integralOf(lumSkin, w, h)
+  const R = Math.max(12, Math.round(Math.min(w, h) / 9))
+  const R2 = Math.max(5, Math.round(R / 3))
+
   const mask = new Uint8Array(n)
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x
-      const r = data[i * 4]
-      const g = data[i * 4 + 1]
-      if (r <= g + 8) continue // gray/green: shadows, hair, background
-      const sBox = boxSum(intS, w, h, x - R, y - R, x + R, y + R)
-      if (sBox.sum / sBox.count < 0.3) continue // not in a skin area
-      const gBox = boxSum(intG, w, h, x - R, y - R, x + R, y + R)
-      if (gfrac[i] >= gBox.sum / gBox.count - delta) continue // not locally red-violet
-      const lBox = boxSum(intL, w, h, x - R, y - R, x + R, y + R)
-      if (lum[i] >= lBox.sum / lBox.count - 5) continue // not locally darker
+      // must sit inside a skin area, away from the limb's outline
+      const near = boxSum(intS, w, h, x - R2, y - R2, x + R2, y + R2)
+      if (near.sum / near.count < 0.5) continue
+      const local = boxSum(intS, w, h, x - R, y - R, x + R, y + R)
+      if (local.sum / local.count < 0.4) continue
+      const skinCnt = local.sum
+      const meanRn = boxSum(intRnS, w, h, x - R, y - R, x + R, y + R).sum / skinCnt
+      const meanGn = boxSum(intGnS, w, h, x - R, y - R, x + R, y + R).sum / skinCnt
+      // red-violet anomaly vs surrounding skin: green deficit + red excess.
+      // Shadows scale all channels equally and score ~0 here.
+      const score = meanGn - gn[i] + 0.7 * (rn[i] - meanRn)
+      if (score <= delta) continue
+      const meanLum = boxSum(intLumS, w, h, x - R, y - R, x + R, y + R).sum / skinCnt
+      if (lum[i] >= meanLum * 0.97) continue // spots are darker than skin
+      if (lum[i] <= meanLum * 0.35) continue // near-black: hair, dirt
       mask[i] = 1
     }
   }
 
-  // Connected components (4-connectivity, iterative flood fill)
-  const minArea = Math.max(6, Math.round(n * 0.00002))
-  const maxArea = Math.round(n * 0.012)
+  // Connected components (4-connectivity, iterative flood fill).
+  // Real petechiae on a full-limb photo can be only a few px across.
+  const minArea = Math.max(5, Math.round(n * 0.000008))
+  const maxArea = Math.round(n * 0.008)
   const visited = new Uint8Array(n)
   const stack = new Int32Array(n)
   const spots: Spot[] = []
@@ -212,7 +282,14 @@ export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.norma
   }
 
   spots.sort((a, b) => b.area - a.area)
-  return { version: 2, w, h, spots, affectedPct: (affected / n) * 100 }
+  return {
+    version: 3,
+    w,
+    h,
+    spots,
+    skinArea: skinTotal,
+    affectedPct: skinTotal > 0 ? (affected / skinTotal) * 100 : 0
+  }
 }
 
 export async function analyzeBlob(blob: Blob, delta?: number): Promise<Analysis> {
@@ -273,7 +350,8 @@ export function toggleSpot(a: Analysis, x: number, y: number): Analysis {
     spots = [...a.spots, { x: Math.round(x), y: Math.round(y), d, area: Math.round(Math.PI * (d / 2) ** 2), manual: true }]
   }
   const affected = spots.reduce((acc, s) => acc + s.area, 0)
-  return { ...a, spots, affectedPct: (affected / (a.w * a.h)) * 100 }
+  const base = a.skinArea ?? a.w * a.h
+  return { ...a, spots, affectedPct: base > 0 ? (affected / base) * 100 : 0 }
 }
 
 export interface MatchResult {
