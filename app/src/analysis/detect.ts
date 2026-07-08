@@ -34,9 +34,9 @@ export type Sensitivity = 'low' | 'normal' | 'high'
 
 // Combined chroma-anomaly score required to call a pixel a spot candidate.
 export const SENSITIVITY_DELTA: Record<Sensitivity, number> = {
-  low: 0.07,
-  normal: 0.045,
-  high: 0.03
+  low: 0.065,
+  normal: 0.04,
+  high: 0.026
 }
 
 const MAX_SIDE = 900
@@ -209,6 +209,10 @@ export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.norma
       const meanLum = boxSum(intLumS, w, h, x - R, y - R, x + R, y + R).sum / skinCnt
       if (lum[i] >= meanLum * 0.97) continue // spots are darker than skin
       if (lum[i] <= meanLum * 0.35) continue // near-black: hair, dirt
+      // The immediate surroundings must be normally lit skin: rejects spots
+      // inside shadow pockets (between toes/limbs, deep creases).
+      const nearLum = boxSum(intLumS, w, h, x - R2, y - R2, x + R2, y + R2).sum / near.sum
+      if (nearLum < meanLum * 0.87) continue
       mask[i] = 1
     }
   }
@@ -230,6 +234,10 @@ export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.norma
     let area = 0
     let sx = 0
     let sy = 0
+    let sxx = 0
+    let syy = 0
+    let sxy = 0
+    let sLum = 0
     let minX = w
     let maxX = 0
     let minY = h
@@ -241,6 +249,10 @@ export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.norma
       area++
       sx += px
       sy += py
+      sxx += px * px
+      syy += py * py
+      sxy += px * py
+      sLum += lum[p]
       if (px < minX) minX = px
       if (px > maxX) maxX = px
       if (py < minY) minY = py
@@ -266,6 +278,31 @@ export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.norma
     const bw = maxX - minX + 1
     const bh = maxY - minY + 1
     if (area / (bw * bh) < 0.3) continue // too stringy: hair, crease, edge
+    const cx = sx / area
+    const cy = sy / area
+    // Skip anything touching the photo border (framing artifacts).
+    const mx = w * 0.025
+    const my = h * 0.025
+    if (cx < mx || cx > w - mx || cy < my || cy > h - my) continue
+    // Roundness via second moments: petechiae are blob-like; lip creases,
+    // folds, and hairs are elongated.
+    if (area >= 12) {
+      const mxx = sxx / area - cx * cx
+      const myy = syy / area - cy * cy
+      const mxy = sxy / area - cx * cy
+      const common = Math.sqrt(((mxx - myy) / 2) ** 2 + mxy * mxy)
+      const l1 = (mxx + myy) / 2 + common
+      const l2 = (mxx + myy) / 2 - common
+      if (l1 > 0 && Math.sqrt(Math.max(l2, 0) / l1) < 0.35) continue
+    }
+    // Darkness band: purpura are moderately darker than skin; near-black
+    // round blobs are holes (nostrils) or dirt, not lesions.
+    const base = boxSum(intLumS, w, h, Math.round(cx) - R, Math.round(cy) - R, Math.round(cx) + R, Math.round(cy) + R)
+    const baseSkin = boxSum(intS, w, h, Math.round(cx) - R, Math.round(cy) - R, Math.round(cx) + R, Math.round(cy) + R)
+    if (baseSkin.sum > 0) {
+      const ratio = sLum / area / (base.sum / baseSkin.sum)
+      if (ratio < 0.45 || ratio > 0.95) continue
+    }
     // Ring test: the surroundings of a real skin spot are skin.
     const m = Math.max(4, Math.round((bw + bh) / 4))
     const outer = boxSum(intS, w, h, minX - m, minY - m, maxX + m, maxY + m)
@@ -273,8 +310,8 @@ export function analyzeImageData(img: ImageData, delta = SENSITIVITY_DELTA.norma
     const ringCount = outer.count - inner.count
     if (ringCount > 0 && (outer.sum - inner.sum) / ringCount < 0.4) continue
     spots.push({
-      x: Math.round(sx / area),
-      y: Math.round(sy / area),
+      x: Math.round(cx),
+      y: Math.round(cy),
       area,
       d: 2 * Math.sqrt(area / Math.PI)
     })
